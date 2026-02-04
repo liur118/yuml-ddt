@@ -13,6 +13,7 @@ defineProps<{
 
 const emit = defineEmits<{
   execute: [stepId: string]
+  focusStep: [stepId: string]
 }>()
 
 function getMethodClass(method: string) {
@@ -28,6 +29,10 @@ function getMethodClass(method: string) {
 function executeStep(stepId: string) {
   emit('execute', stepId)
 }
+
+function handleStepClick(stepId: string) {
+  emit('focusStep', stepId)
+}
 </script>
 
 <template>
@@ -39,6 +44,7 @@ function executeStep(stepId: string) {
       v-for="step in steps"
       :key="step.id"
       class="step-item"
+      @click="handleStepClick(step.id)"
     >
       <div class="step-info">
         <div class="step-header">
@@ -81,6 +87,7 @@ function executeStep(stepId: string) {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   gap: 8px;
+  cursor: pointer;
 }
 
 .step-item:hover {

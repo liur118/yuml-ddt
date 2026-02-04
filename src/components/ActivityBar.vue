@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import filesIcon from '@/assets/icons/files.svg'
+import testsIcon from '@/assets/icons/tests.svg'
+import settingsIcon from '@/assets/icons/settings.svg'
+import helpIcon from '@/assets/icons/help.svg'
+
 const props = defineProps<{
   activeView: string
 }>()
@@ -8,9 +13,9 @@ const emit = defineEmits<{
 }>()
 
 const views = [
-  { id: 'files', icon: '📁', title: '文件资源管理器' },
-  { id: 'tests', icon: '🧪', title: '测试用例' },
-  { id: 'settings', icon: '⚙️', title: '设置' },
+  { id: 'files', icon: filesIcon, title: '文件资源管理器' },
+  { id: 'tests', icon: testsIcon, title: '测试用例' },
+  { id: 'settings', icon: settingsIcon, title: '设置' },
 ]
 
 function selectView(viewId: string) {
@@ -34,11 +39,13 @@ function selectView(viewId: string) {
         :title="view.title"
         @click="selectView(view.id)"
       >
-        {{ view.icon }}
+        <img :src="view.icon" :alt="view.title" class="icon" />
       </button>
     </div>
     <div class="activity-bottom">
-      <button class="activity-icon" title="帮助">❓</button>
+      <button class="activity-icon" title="帮助">
+        <img :src="helpIcon" alt="帮助" class="icon" />
+      </button>
     </div>
   </div>
 </template>
@@ -77,6 +84,12 @@ function selectView(viewId: string) {
   opacity: 0.6;
   position: relative;
   transition: opacity 0.15s;
+}
+
+.activity-icon .icon {
+  width: 22px;
+  height: 22px;
+  filter: var(--icon-filter, invert(0.7));
 }
 
 .activity-icon:hover {

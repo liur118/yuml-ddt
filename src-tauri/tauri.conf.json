@@ -1,10 +1,10 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "yuml-ddt",
-  "version": "0.1.0",
+  "productName": "Yuml DDT",
+  "version": "1.0.0",
   "identifier": "com.yuml.ddt",
   "build": {
-    "frontendDist": "dist",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"

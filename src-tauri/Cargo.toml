@@ -1,6 +1,6 @@
 [package]
-name = "yuml-ddt"
-version = "0.1.0"
+name = "yuml_ddt"
+version = "1.0.0"
 description = "YAML Data-Driven Testing Tool"
 authors = ["liur"]
 license = "MIT"

@@ -13,6 +13,7 @@ interface StepInfo {
 const props = defineProps<{
   content: string
   steps: StepInfo[]
+  parseError?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -163,11 +164,45 @@ watch(() => props.content, (newContent) => {
 watch(() => props.steps, () => {
   nextTick(() => updateRunButtons())
 }, { deep: true })
+
+// 暴露方法：跳转到指定 step 所在行
+function focusStep(stepId: string) {
+  if (!editor) return
+  
+  const content = editor.getValue()
+  const stepLines = findStepLines(content)
+  let lineNumber = stepLines.get(stepId)
+  
+  if (!lineNumber) {
+    // 备用查找方式
+    const lines = content.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes(stepId + ':')) {
+        lineNumber = i + 1
+        break
+      }
+    }
+  }
+  
+  if (lineNumber) {
+    editor.revealLineInCenter(lineNumber)
+    editor.setPosition({ lineNumber, column: 1 })
+    editor.focus()
+  }
+}
+
+defineExpose({
+  focusStep
+})
 </script>
 
 <template>
   <div class="yaml-editor">
-    <div ref="editorContainer" class="editor-container"></div>
+    <div v-if="parseError" class="error-bar">
+      <span class="error-icon">⚠️</span>
+      <span class="error-text">YAML解析错误: {{ parseError }}</span>
+    </div>
+    <div ref="editorContainer" class="editor-container" :class="{ 'with-error': parseError }"></div>
   </div>
 </template>
 
@@ -175,11 +210,41 @@ watch(() => props.steps, () => {
 .yaml-editor {
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.error-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #ff4444;
+  color: white;
+  font-size: 13px;
+  font-family: Menlo, Monaco, "Courier New", monospace;
+  border-bottom: 1px solid #cc0000;
+  z-index: 1000;
+}
+
+.error-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.error-text {
+  flex: 1;
+  overflow-x: auto;
+  white-space: pre;
 }
 
 .editor-container {
   width: 100%;
-  height: 100%;
+  flex: 1;
+}
+
+.editor-container.with-error {
+  height: calc(100% - 36px);
 }
 </style>
 

@@ -42,6 +42,9 @@ interface RecentWorkspace {
   last_opened: string
 }
 
+// 编辑器引用
+const yamlEditorRef = ref<InstanceType<typeof YamlEditor> | null>(null)
+
 // 状态
 const activeView = ref<string>('files')
 const workspacePath = ref<string>('')
@@ -49,6 +52,7 @@ const yamlFiles = ref<string[]>([])
 const currentFile = ref<string>('')
 const fileContent = ref<string>('')
 const steps = ref<StepInfo[]>([])
+const parseError = ref<string | null>(null)
 const executionResult = ref<ExecutionResult | null>(null)
 const isExecuting = ref(false)
 const hasChanges = ref(false)
@@ -150,6 +154,7 @@ async function openFile(filePath: string) {
 async function parseSteps() {
   if (!fileContent.value) {
     steps.value = []
+    parseError.value = null
     return
   }
   
@@ -157,9 +162,11 @@ async function parseSteps() {
     steps.value = await invoke('parse_yaml_steps', { 
       content: fileContent.value 
     })
+    parseError.value = null
   } catch (e) {
     console.error('解析 steps 失败:', e)
     steps.value = []
+    parseError.value = String(e)
   }
 }
 
@@ -222,6 +229,7 @@ async function executeStep(stepId: string) {
 function onContentChange(content: string) {
   fileContent.value = content
   hasChanges.value = true
+  parseSteps()
 }
 
 // 文件名
@@ -235,8 +243,45 @@ function closeFile() {
   currentFile.value = ''
   fileContent.value = ''
   steps.value = []
+  parseError.value = null
   hasChanges.value = false
   executionResult.value = null
+}
+
+// 聚焦到 step 对应行
+function focusStep(stepId: string) {
+  yamlEditorRef.value?.focusStep(stepId)
+}
+
+// 结果面板宽度
+const resultPaneWidth = ref(400)
+const isResizing = ref(false)
+const minResultWidth = 200
+const maxResultWidth = 800
+
+function startResize(_e: MouseEvent) {
+  isResizing.value = true
+  document.addEventListener('mousemove', handleResize)
+  document.addEventListener('mouseup', stopResize)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function handleResize(e: MouseEvent) {
+  if (!isResizing.value) return
+  const container = document.querySelector('.editor-content')
+  if (!container) return
+  const containerRect = container.getBoundingClientRect()
+  const newWidth = containerRect.right - e.clientX
+  resultPaneWidth.value = Math.max(minResultWidth, Math.min(maxResultWidth, newWidth))
+}
+
+function stopResize() {
+  isResizing.value = false
+  document.removeEventListener('mousemove', handleResize)
+  document.removeEventListener('mouseup', stopResize)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
 }
 
 // 快捷键
@@ -261,7 +306,7 @@ function handleKeydown(e: KeyboardEvent) {
         <template v-if="activeView === 'files'">
           <div class="sidebar-header">
             <span>资源管理器</span>
-            <button class="icon-btn" @click="openWorkspace" title="打开目录">📂</button>
+            <button class="icon-btn" @click="openWorkspace()" title="打开目录">📂</button>
           </div>
           <div v-if="workspacePath" class="workspace-info">
             <span class="workspace-name">{{ workspacePath.split('/').pop() }}</span>
@@ -283,6 +328,7 @@ function handleKeydown(e: KeyboardEvent) {
             :steps="steps"
             :isExecuting="isExecuting"
             @execute="executeStep"
+            @focus-step="focusStep"
           />
         </template>
 
@@ -363,13 +409,20 @@ function handleKeydown(e: KeyboardEvent) {
         <div v-else class="editor-content">
           <div class="editor-pane">
             <YamlEditor 
+              ref="yamlEditorRef"
               :content="fileContent"
               :steps="steps"
+              :parse-error="parseError"
               @change="onContentChange"
               @execute="executeStep"
             />
           </div>
-          <div class="result-pane">
+          <div 
+            class="resize-handle" 
+            @mousedown="startResize"
+            :class="{ active: isResizing }"
+          ></div>
+          <div class="result-pane" :style="{ width: resultPaneWidth + 'px' }">
             <div class="pane-header">
               <span>执行结果</span>
               <span v-if="isExecuting" class="loading">⏳ 执行中...</span>
@@ -699,14 +752,29 @@ function handleKeydown(e: KeyboardEvent) {
 .editor-pane {
   flex: 1;
   overflow: hidden;
+  min-width: 300px;
+}
+
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.resize-handle:hover,
+.resize-handle.active {
+  background: var(--accent);
 }
 
 .result-pane {
-  width: 400px;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
-  border-left: 1px solid var(--border);
+  flex-shrink: 0;
+  min-width: 200px;
+  max-width: 800px;
 }
 
 .pane-header {

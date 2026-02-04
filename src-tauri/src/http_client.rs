@@ -117,11 +117,17 @@ impl HttpClient {
             request = request.query(p);
         }
         
+        let has_body = body.is_some();
         if let Some(b) = body {
             request = request.json(b);
         }
         
-        let (request, request_headers) = self.apply_headers(request, headers).await;
+        let (request, mut request_headers) = self.apply_headers(request, headers).await;
+        
+        // 如果使用了 .json()，记录 Content-Type (reqwest 会自动添加)
+        if has_body && !request_headers.contains_key("Content-Type") && !request_headers.contains_key("content-type") {
+            request_headers.insert("content-type".to_string(), "application/json".to_string());
+        }
         
         self.execute_request(request, request_headers, &url, "POST").await
     }
@@ -142,11 +148,17 @@ impl HttpClient {
             request = request.query(p);
         }
         
+        let has_body = body.is_some();
         if let Some(b) = body {
             request = request.json(b);
         }
         
-        let (request, request_headers) = self.apply_headers(request, headers).await;
+        let (request, mut request_headers) = self.apply_headers(request, headers).await;
+        
+        // 如果使用了 .json()，记录 Content-Type (reqwest 会自动添加)
+        if has_body && !request_headers.contains_key("Content-Type") && !request_headers.contains_key("content-type") {
+            request_headers.insert("content-type".to_string(), "application/json".to_string());
+        }
         
         self.execute_request(request, request_headers, &url, "PUT").await
     }
@@ -178,10 +190,6 @@ impl HttpClient {
         custom_headers: Option<&HashMap<String, String>>,
     ) -> (reqwest::RequestBuilder, HashMap<String, String>) {
         let mut all_headers: HashMap<String, String> = HashMap::new();
-        
-        // 添加默认 Content-Type
-        request = request.header("Content-Type", "application/json");
-        all_headers.insert("Content-Type".to_string(), "application/json".to_string());
         
         // 添加自定义 headers
         if let Some(headers) = custom_headers {
