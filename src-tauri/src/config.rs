@@ -52,6 +52,12 @@ pub struct EnvironmentConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthConfig {
     #[serde(default)]
+    pub request_format: String,
+    #[serde(default)]
+    pub request_body: Option<HashMap<String, serde_json::Value>>,
+    #[serde(default)]
+    pub token_field: String,
+    #[serde(default)]
     pub token_url: String,
     #[serde(default)]
     pub client_id: String,
@@ -74,6 +80,9 @@ pub struct AuthConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
+            request_format: String::new(),
+            request_body: None,
+            token_field: String::new(),
             token_url: String::new(),
             client_id: String::new(),
             grant_type: String::new(),

@@ -33,12 +33,20 @@ impl HttpClient {
     }
 
     /// 获取 token
-    async fn get_token(&self) -> Option<String> {
-        let auth = self.auth_config.as_ref()?;
+    async fn get_token(&self) -> Result<Option<String>, String> {
+        let Some(auth) = self.auth_config.as_ref() else {
+            return Ok(None);
+        };
         
         if auth.token_url.is_empty() {
-            return None;
+            return Ok(None);
         }
+
+        let token_field = if auth.token_field.is_empty() {
+            "access_token"
+        } else {
+            &auth.token_field
+        };
 
         // 先检查缓存
         let cache_key = if auth.token_cache_key.is_empty() {
@@ -48,37 +56,47 @@ impl HttpClient {
         };
 
         if let Some(cached) = self.cache.get(cache_key) {
-            if let Some(token) = cached.get("access_token").and_then(|v| v.as_str()) {
-                return Some(token.to_string());
+            if let Some(token) = extract_token(&cached, token_field) {
+                return Ok(Some(token));
             }
         }
 
         // 请求新 token
-        let mut form = HashMap::new();
-        form.insert("client_id", auth.client_id.as_str());
-        form.insert("grant_type", auth.grant_type.as_str());
-        form.insert("username", auth.username.as_str());
-        form.insert("password", auth.password.as_str());
-
-        let response = self.client
-            .post(&auth.token_url)
-            .form(&form)
-            .send()
-            .await
-            .ok()?;
-
-        if response.status().is_success() {
-            let token_data: Value = response.json().await.ok()?;
-            
-            // 缓存 token
-            self.cache.set(cache_key, token_data.clone(), Some(3600));
-            
-            token_data.get("access_token")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        } else {
-            None
+        let body = auth.request_body.clone().unwrap_or_else(|| {
+            HashMap::from([
+                ("client_id".to_string(), Value::String(auth.client_id.clone())),
+                ("grant_type".to_string(), Value::String(auth.grant_type.clone())),
+                ("username".to_string(), Value::String(auth.username.clone())),
+                ("password".to_string(), Value::String(auth.password.clone())),
+            ])
+        });
+        let request = self.client.post(&auth.token_url);
+        let request = match auth.request_format.as_str() {
+            "" | "form" => {
+                let form: Result<HashMap<_, _>, String> = body.iter().map(|(key, value)| {
+                    let value = match value {
+                        Value::String(value) => value.clone(),
+                        Value::Bool(_) | Value::Number(_) => value.to_string(),
+                        _ => return Err("auth.request_body form values must be strings, numbers or booleans".to_string()),
+                    };
+                    Ok((key.clone(), value))
+                }).collect();
+                request.form(&form?)
+            }
+            "json" => request.json(&body),
+            _ => return Err("auth.request_format must be form or json".to_string()),
+        };
+        let response = request.send().await
+            .map_err(|_| "Token request failed".to_string())?;
+        if !response.status().is_success() {
+            return Err(format!("Token request failed: HTTP {}", response.status()));
         }
+        let token_data: Value = response.json().await
+            .map_err(|_| "Token response is not valid JSON".to_string())?;
+        let token = extract_token(&token_data, token_field)
+            .ok_or_else(|| format!("Token response field '{}' must be a non-empty string", token_field))?;
+        self.cache.set(cache_key, token_data, Some(3600));
+        Ok(Some(token))
     }
 
     /// 发送 GET 请求
@@ -96,7 +114,7 @@ impl HttpClient {
             request = request.query(p);
         }
         
-        let (request, request_headers) = self.apply_headers(request, headers).await;
+        let (request, request_headers) = self.apply_headers(request, headers).await?;
         
         self.execute_request(request, request_headers, &url, "GET").await
     }
@@ -122,7 +140,7 @@ impl HttpClient {
             request = request.json(b);
         }
         
-        let (request, mut request_headers) = self.apply_headers(request, headers).await;
+        let (request, mut request_headers) = self.apply_headers(request, headers).await?;
         
         // 如果使用了 .json()，记录 Content-Type (reqwest 会自动添加)
         if has_body && !request_headers.contains_key("Content-Type") && !request_headers.contains_key("content-type") {
@@ -153,7 +171,7 @@ impl HttpClient {
             request = request.json(b);
         }
         
-        let (request, mut request_headers) = self.apply_headers(request, headers).await;
+        let (request, mut request_headers) = self.apply_headers(request, headers).await?;
         
         // 如果使用了 .json()，记录 Content-Type (reqwest 会自动添加)
         if has_body && !request_headers.contains_key("Content-Type") && !request_headers.contains_key("content-type") {
@@ -178,7 +196,7 @@ impl HttpClient {
             request = request.query(p);
         }
         
-        let (request, request_headers) = self.apply_headers(request, headers).await;
+        let (request, request_headers) = self.apply_headers(request, headers).await?;
         
         self.execute_request(request, request_headers, &url, "DELETE").await
     }
@@ -188,7 +206,7 @@ impl HttpClient {
         &self,
         mut request: reqwest::RequestBuilder,
         custom_headers: Option<&HashMap<String, String>>,
-    ) -> (reqwest::RequestBuilder, HashMap<String, String>) {
+    ) -> Result<(reqwest::RequestBuilder, HashMap<String, String>), String> {
         let mut all_headers: HashMap<String, String> = HashMap::new();
         
         // 添加自定义 headers
@@ -200,7 +218,7 @@ impl HttpClient {
         }
         
         // 添加认证 token
-        if let Some(token) = self.get_token().await {
+        if let Some(token) = self.get_token().await? {
             if let Some(auth) = &self.auth_config {
                 let auth_position = if auth.auth_position.is_empty() {
                     "header"
@@ -220,7 +238,7 @@ impl HttpClient {
                         } else {
                             &auth.auth_prefix
                         };
-                        let value = format!("{} {}", prefix, token);
+                        let value = format!("{} {}", prefix.trim(), token);
                         request = request.header(key, value.clone());
                         all_headers.insert(key.to_string(), value);
                     }
@@ -238,7 +256,7 @@ impl HttpClient {
             }
         }
         
-        (request, all_headers)
+        Ok((request, all_headers))
     }
 
     /// 执行请求
@@ -272,4 +290,12 @@ impl HttpClient {
         
         Ok((status, request_headers, response_headers, body))
     }
+}
+
+fn extract_token(data: &Value, field: &str) -> Option<String> {
+    let mut value = data;
+    for part in field.split('.') {
+        value = value.get(part)?;
+    }
+    value.as_str().filter(|token| !token.trim().is_empty()).map(str::to_owned)
 }

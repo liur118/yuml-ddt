@@ -139,9 +139,10 @@ global:
         token_url: "http://localhost:8080/auth/token"
         username: "admin"
         password: "admin123"
-        position: "header"    # token 位置: header/query/body
-        token_field: "Authorization"
-        token_prefix: "Bearer "
+        auth_position: "header"    # token 发送位置: header/query
+        auth_key: "Authorization"
+        auth_prefix: "Bearer"
+        token_field: "access_token" # 登录响应中读取 token 的字段
     
     dev:                      # 开发环境
       base_url: "https://dev-api.example.com"

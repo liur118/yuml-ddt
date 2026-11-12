@@ -452,7 +452,7 @@ global:
         token_url: "https://auth.example.com/token"
         username: "test_user"
         password: "test_pass"
-        auth_position: "header"           # token 位置：header/query/body
+        auth_position: "header"           # token 位置：header/query
         auth_key: "Authorization"          # header 名称或参数名
         auth_prefix: "Bearer "             # token 前缀
 ```
@@ -462,14 +462,47 @@ global:
 | 字段 | 说明 | 默认值 | 示例 |
 |------|------|--------|------|
 | `token_url` | Token 获取地址 | 必填 | `"https://auth.example.com/token"` |
+| `request_format` | 登录请求编码 | `"form"` | `"form"` / `"json"` |
+| `request_body` | 自定义登录请求体，整体替代默认 OAuth 字段 | 未设置 | `{email: "user@example.com", password: "secret"}` |
+| `token_field` | 登录响应中 token 的字段路径，支持点分嵌套 | `"access_token"` | `"accessToken"` / `"data.accessToken"` |
 | `username` | 用户名 | `""` | `"test_user"` |
 | `password` | 密码 | `""` | `"test_pass"` |
 | `client_id` | 客户端ID（OAuth） | `""` | `"client_123"` |
-| `grant_type` | 授权类型 | `"password"` | `"client_credentials"` |
-| `auth_position` | Token 位置 | `"header"` | `"header"` / `"query"` / `"body"` |
+| `grant_type` | 授权类型 | `""` | `"client_credentials"` |
+| `auth_position` | Token 发送位置 | `"header"` | `"header"` / `"query"` |
 | `auth_key` | 键名 | `"Authorization"` | `"Authorization"` |
 | `auth_prefix` | Token 前缀 | `"Bearer"` | `"Bearer "` |
 | `token_cache_key` | 缓存键名 | `""` | `"my_token"` |
+
+### JSON 登录与自定义 Token 字段
+
+例如 Resume Builder 使用 JSON `email/password` 登录，响应字段为 `accessToken`：
+
+```yaml
+global:
+  profile:
+    active: local
+    local:
+      base_url: "http://127.0.0.1:8080"
+      context: "/api"
+      auth:
+        token_url: "http://127.0.0.1:8080/api/auth/login"
+        request_format: "json"
+        request_body:
+          email: "your-email@example.com"
+          password: "your-password"
+        token_field: "accessToken"
+        auth_position: "header"
+        auth_key: "Authorization"
+        auth_prefix: "Bearer"
+```
+
+点击业务 step 时自动登录并携带 Token，无需手工复制，也无需在 step 中重复设置 Authorization。
+`token_field` 决定从响应哪里取值；`auth_key` 决定发送时的 header 或 query 名称，两者独立。
+登录地址使用完整 URL；认证配置使用字面值，不展开 `{variables}`。
+`request_body` 未设置时仍发送原有 `client_id/grant_type/username/password` 字段，兼容旧配置。
+JSON 请求体支持嵌套对象；form 请求体仅支持字符串、数字、布尔值。
+登录 HTTP 失败、响应不是 JSON、Token 字段缺失或不是非空字符串时，当前 step 报错并停止发送业务请求。
 
 ### Token 位置示例
 
@@ -512,7 +545,7 @@ GET /api/users?access_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 Token 会自动缓存，避免重复获取。缓存策略：
 - 缓存在内存中
-- 应用重启后需重新获取
+- 当前每次点击执行 step 都会新建引擎，因此会重新登录；缓存仅在同一引擎实例内复用，有效期一小时
 - 可通过 `token_cache_key` 自定义缓存键名
 
 ---
